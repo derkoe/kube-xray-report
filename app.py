@@ -91,7 +91,7 @@ def generate_report(namespace, docker_registry, xray_url, artifactory_auth, html
 @click.option(
     "--xray-url",
     help=f"URL for your Xray instance (e.g. https://xray.my-company.com)",
-    envvar="DOCKER_REGISTRY",
+    envvar="XRAY_URL",
     prompt=True
 )
 @click.option(
