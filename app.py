@@ -79,7 +79,6 @@ def generate_report(namespace, docker_registry, xray_url, artifactory_auth, html
 @click.option(
     "--namespace",
     help="Analyze pods only in this namespace, check all if omitted.",
-    default="defaut",
     envvar="NAMESPACE",
 )
 @click.option(
