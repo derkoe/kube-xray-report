@@ -1,6 +1,7 @@
 import click
 from kubernetes import client, config
 import requests
+import time
 
 def get_image_hash(docker_registry, artifactory_auth, image_name, image_tag):
     response = requests.get(f"https://{docker_registry}/v2/{image_name}/manifests/{image_tag}", headers={
@@ -10,7 +11,7 @@ def get_image_hash(docker_registry, artifactory_auth, image_name, image_tag):
         return content_digest[content_digest.index(":")+1:]
 
 
-def scan_image(image, docker_registry, xray_url,artifactory_auth):
+def scan_image(image, docker_registry, xray_url, artifactory_auth):
     if docker_registry not in image:
         return None
 
@@ -18,7 +19,8 @@ def scan_image(image, docker_registry, xray_url,artifactory_auth):
 
     if "@sha256" not in image:
         image_name = image[image.index("/"):image.index(":")]
-        image_hash = get_image_hash(docker_registry, artifactory_auth, image_name, image_hash)
+        image_hash = get_image_hash(
+            docker_registry, artifactory_auth, image_name, image_hash)
 
     if image_hash == None:
         return None
@@ -33,6 +35,27 @@ def scan_image(image, docker_registry, xray_url,artifactory_auth):
                 issue_count += 1
 
     return issue_count
+
+def generate_report(namespace, docker_registry, xray_url, artifactory_auth):
+
+    try:
+        config.load_incluster_config()
+    except config.ConfigException:
+        config.load_kube_config()
+
+    print("Listing pods with their images:")
+
+    if namespace:
+        ret = client.CoreV1Api().list_namespaced_pod(namespace)
+    else:
+        ret = client.CoreV1Api().list_pod_for_all_namespaces()
+
+    for i in ret.items:
+        for container in i.spec.containers:
+            issue_count = scan_image(
+                container.image, docker_registry, xray_url, artifactory_auth)
+            print("%s\t%s\t%s\t%s" % (i.metadata.namespace,
+                                      i.metadata.name, container.image, issue_count))
 
 
 @click.command()
@@ -67,27 +90,20 @@ def scan_image(image, docker_registry, xray_url,artifactory_auth):
     prompt=True,
     hide_input=True
 )
-def main(namespace, docker_registry, xray_url, artifactory_username, artifactory_password):
+@click.option(
+    "--update-interval-minutes",
+    type=float,
+    help="Update the report every X minutes (default: run once and exit)",
+    default=0,
+)
+def main(namespace, docker_registry, xray_url, artifactory_username, artifactory_password, update_interval_minutes):
 
-    try:
-        config.load_incluster_config()
-    except config.ConfigException:
-        config.load_kube_config()
-
-    print("Listing pods with their images:")
-
-    if namespace:
-        ret = client.CoreV1Api().list_namespaced_pod(namespace)
-    else:
-        ret = client.CoreV1Api().list_pod_for_all_namespaces()
-
-    for i in ret.items:
-        for container in i.spec.containers:
-            issue_count = scan_image(
-                container.image, docker_registry, xray_url, (artifactory_username, artifactory_password))
-            print("%s\t%s\t%s\t%s" % (i.metadata.namespace,
-                                      i.metadata.name, container.image, issue_count))
-
+    while(True):
+        generate_report(namespace, docker_registry, xray_url, (artifactory_username, artifactory_password))
+        if update_interval_minutes > 0:
+            time.sleep(update_interval_minutes * 60)
+        else:
+            break
 
 if __name__ == "__main__":
     main()
