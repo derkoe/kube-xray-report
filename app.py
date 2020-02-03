@@ -1,4 +1,5 @@
 import click
+import jinja2
 from kubernetes import client, config
 import requests
 import time
@@ -36,7 +37,17 @@ def scan_image(image, docker_registry, xray_url, artifactory_auth):
 
     return issue_count
 
-def generate_report(namespace, docker_registry, xray_url, artifactory_auth):
+
+def render_html(results, html_report_dir):
+    env = jinja2.Environment(
+        autoescape=jinja2.select_autoescape(["html", "xml"]),
+        loader=jinja2.FileSystemLoader(".")
+    )
+    template = env.get_template("report_template.html")
+    template.stream(results=results).dump(f"{html_report_dir}/index.html")
+
+
+def generate_report(namespace, docker_registry, xray_url, artifactory_auth, html_report_dir):
 
     try:
         config.load_incluster_config()
@@ -50,12 +61,18 @@ def generate_report(namespace, docker_registry, xray_url, artifactory_auth):
     else:
         ret = client.CoreV1Api().list_pod_for_all_namespaces()
 
+    results = []
     for i in ret.items:
         for container in i.spec.containers:
             issue_count = scan_image(
                 container.image, docker_registry, xray_url, artifactory_auth)
+            results.append({"namespace": i.metadata.namespace, "pod_name": i.metadata.name,
+                            "image": container.image, "issue_count": issue_count})
             print("%s\t%s\t%s\t%s" % (i.metadata.namespace,
                                       i.metadata.name, container.image, issue_count))
+
+    if html_report_dir:
+        render_html(results, html_report_dir)
 
 
 @click.command()
@@ -96,10 +113,16 @@ def generate_report(namespace, docker_registry, xray_url, artifactory_auth):
     help="Update the report every X minutes (default: run once and exit)",
     default=0,
 )
-def main(namespace, docker_registry, xray_url, artifactory_username, artifactory_password, update_interval_minutes):
+@click.option(
+    "--html-report-dir",
+    help="Output directory for HTML report"
+)
+def main(namespace, docker_registry, xray_url, artifactory_username, artifactory_password, update_interval_minutes, html_report_dir):
 
     while(True):
-        generate_report(namespace, docker_registry, xray_url, (artifactory_username, artifactory_password))
+        generate_report(namespace, docker_registry, xray_url,
+                        (artifactory_username, artifactory_password),
+                        html_report_dir)
         if update_interval_minutes > 0:
             time.sleep(update_interval_minutes * 60)
         else:
