@@ -1,4 +1,4 @@
 kubernetes==10.0.1
-requests==2.22.0
+requests==2.23.0
 click==7.0
 Jinja2==2.11.1
