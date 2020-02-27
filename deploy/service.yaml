@@ -1,0 +1,15 @@
+kind: Service
+apiVersion: v1
+metadata:
+  name: kube-xray-report
+  labels:
+    app: kube-xray-report
+    version: latest
+spec:
+  selector:
+    app: kube-xray-report
+  type:  ClusterIP
+  ports:
+  - name: http
+    port: 80
+    targetPort: 8080

@@ -1,0 +1,65 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: kube-xray-report
+    version: latest
+  name: kube-xray-report
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kube-xray-report
+  template:
+    metadata:
+      labels:
+        app: kube-xray-report
+        version: latest
+    spec:
+      serviceAccount: kube-xray-report
+      containers:
+      - name: kube-xray-report
+        image: derkoe/kube-xray-report:latest
+        imagePullPolicy: Always
+        args:
+        - --update-interval-minutes=120
+        - --html-report-dir=/output
+        envFrom:
+        - secretRef:
+            name: kube-xray-report-env
+        volumeMounts:
+        - mountPath: /output
+          name: report-data
+        resources:
+          limits:
+            cpu: "1"
+            memory: 500Mi
+          requests:
+            cpu: 5m
+            memory: 500Mi
+        securityContext:
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+      - name: nginx
+        image: nginxinc/nginx-unprivileged:stable
+        volumeMounts:
+        - mountPath: /usr/share/nginx/html
+          name: report-data
+          readOnly: true
+        ports:
+        - containerPort: 8080
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8080
+        resources:
+          limits:
+            cpu: 100m
+            memory: 50Mi
+          requests:
+            cpu: 5m
+            memory: 20Mi
+      volumes:
+          - name: report-data
+            emptyDir:
+              sizeLimit: 50Mi
